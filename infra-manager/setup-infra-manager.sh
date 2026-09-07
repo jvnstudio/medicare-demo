@@ -58,10 +58,12 @@ for role in \
     --condition=None --quiet
 done
 
+# Billing-account IAM uses a slightly different gcloud surface and does not
+# accept --condition=None in some current Cloud SDK builds.
 gcloud billing accounts add-iam-policy-binding "${FAST_BILLING_ACCOUNT}" \
   --member="serviceAccount:${IM_SA_EMAIL}" \
   --role="roles/billing.user" \
-  --condition=None --quiet
+  --quiet
 
 cat <<EOF
 
