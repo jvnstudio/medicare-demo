@@ -12,9 +12,11 @@ terraform {
     }
   }
 
-  # Infrastructure Manager owns Terraform state for this workload deployment.
-  # Do not define a backend block here; Infra Manager rejects root modules that
-  # configure their own backend.
+  # The bucket is passed at init time:
+  # terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
+  backend "gcs" {
+    prefix = "medicare-modernization-demo"
+  }
 }
 
 provider "google" {
