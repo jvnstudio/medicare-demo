@@ -1,6 +1,6 @@
 # Medicare HA/DR live demo scripts
 
-These scripts are designed for a live presentation of the Infrastructure Manager single-project deployment.
+These scripts live at the repository root so they are easy to run during the presentation.
 
 ## MIG terminology
 
@@ -9,111 +9,125 @@ MIG means **Managed Instance Group**.
 - Primary MIG: `medicare-sp-portal-primary` in `us-east4`
 - DR MIG: `medicare-sp-portal-dr` in `us-central1`
 
-The primary MIG demonstrates zonal high availability and autohealing. The DR MIG provides warm cross-region capacity and can autoscale under load.
+The primary MIG demonstrates desired-capacity recovery and zonal HA. The DR MIG provides warm cross-region capacity and can autoscale under load.
 
 ## Prepare
 
 ```bash
 cd ~/medicare-demo
 git pull origin main
-cd infra-manager/single-project/demo-scripts
+cd demo-scripts
 
 export PROJECT_ID="medicare-demo-260907-4f00"
-```
-
-You can execute every script with `bash`, so executable file mode is not required:
-
-```bash
-bash 01-show-migs.sh
-```
-
-Optionally:
-
-```bash
 chmod +x *.sh
 ```
 
-## Recommended live-demo layout
+## Demo 1 - VM failure and MIG recovery
 
-### Terminal 1 - traffic
+Terminal 1:
 
 ```bash
-bash 02-watch-traffic.sh
+./02-watch-migs.sh
 ```
 
-This continually calls the global load-balancer IP and prints the serving instance, zone, and region.
+This is the main visual watcher. It shows both primary and DR managed instances with:
 
-### Terminal 2 - backend health
+- instance name
+- zone
+- VM status
+- current MIG action
+- health state
+
+Terminal 2:
 
 ```bash
-bash 03-watch-health.sh
+./03-delete-primary-vm.sh
 ```
 
-This continually displays the health reported by the global backend service.
+Type `DELETE` when prompted. The script selects one current primary VM automatically, so the demo does not depend on a hard-coded instance name.
 
-### Terminal 3 - demo control
-
-Start with:
+Equivalent manual command:
 
 ```bash
-bash 01-show-migs.sh
+gcloud compute instances delete INSTANCE_NAME \
+  --zone=INSTANCE_ZONE \
+  --project=medicare-demo-260907-4f00
 ```
 
-Then inject an application failure across the primary MIG:
+Watch Terminal 1 as the primary MIG restores its desired capacity. The managed-instance name can be reused, so focus on `STATUS`, `ACTION`, and `HEALTH` during the transition.
+
+## Demo 2 - regional application failure / DR routing
+
+Terminal 1:
 
 ```bash
-bash 04-fail-primary.sh
+./02-watch-migs.sh
 ```
 
-Type `FAILOVER` when prompted.
-
-The expected sequence is:
-
-1. nginx stops on all primary VMs.
-2. `/health` fails in `us-east4`.
-3. The global backend marks the primary unhealthy.
-4. The same global IP continues serving through `us-central1`.
-5. The primary MIG independently repairs or recreates unhealthy VMs.
-6. The primary backend becomes healthy again.
-
-## Demonstrate DR autoscaling
-
-In another terminal:
+Terminal 2:
 
 ```bash
-bash 05-watch-dr-scale.sh
+./04-watch-health.sh
 ```
 
-Generate traffic:
+Terminal 3:
 
 ```bash
-bash 06-generate-load.sh
+./05-fail-primary-region.sh
 ```
 
-Defaults are 30 parallel workers for 120 seconds. Override them if needed:
+Type `FAILOVER` when prompted. This stops nginx on all primary-region VMs while leaving the VMs running. The load balancer health check should mark the primary backend unhealthy while the DR MIG remains available.
+
+## Demo 3 - DR autoscaling
+
+Watch DR capacity:
 
 ```bash
-WORKERS=50 DURATION=180 bash 06-generate-load.sh
+./06-watch-dr-scale.sh
+```
+
+Generate HTTP load:
+
+```bash
+./07-generate-load.sh
+```
+
+For stronger load:
+
+```bash
+WORKERS=50 DURATION=180 ./07-generate-load.sh
 ```
 
 The DR MIG is configured with a minimum of 1 and maximum of 3 instances.
 
-## Reset between demos
-
-If you want a deterministic reset instead of waiting for autohealing:
+## Reset
 
 ```bash
-bash 07-recover-primary.sh
+./08-recover-primary.sh
 ```
 
-Then wait for the backend health check to report the primary healthy again.
+Then allow the load-balancer health check a short time to mark the primary backend healthy again.
 
-## Presentation talk track
+## Recommended presentation order
 
-- VM/application failure: health check + MIG autohealing.
-- Zone failure: regional MIG maintains capacity across zones.
-- Region/application failure: global health-based load balancing keeps one public endpoint and routes to healthy DR capacity.
-- DR demand increase: autoscaler adds DR VMs automatically.
-- Infrastructure definition and revisions: GitHub -> Infrastructure Manager -> Terraform preview/apply.
+```text
+GitHub -> Infrastructure Manager -> Terraform-managed infrastructure
+                     |
+                     v
+           Primary regional MIG
+                     |
+          delete one VM live
+                     |
+                     v
+         MIG restores capacity
+                     |
+        fail primary application
+                     |
+                     v
+          DR backend stays healthy
+                     |
+                     v
+        DR MIG can autoscale 1 -> 3
+```
 
 For production, cross-region compute recovery must be paired with replicated application state, database/storage replication, secrets, observability, and recurring DR tests to meet the full application RTO/RPO.
