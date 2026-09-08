@@ -9,19 +9,27 @@ if [[ -n "${VM_NAME:-}" && -n "${VM_ZONE:-}" ]]; then
   TARGET_VM="$VM_NAME"
   TARGET_ZONE="$VM_ZONE"
 else
-  TARGET_ROW="$(gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
+  # Ask the MIG for one managed instance self-link. The self-link contains
+  # both the zone and VM name, so we do not depend on gcloud scope() formatting.
+  TARGET_URL="$(gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
     --region="$PRIMARY_REGION" \
     --project="$PROJECT_ID" \
-    --format="csv[no-heading](instance.basename(),instance.scope(zone))" \
+    --format="value(instance)" \
     | head -n1)"
 
-  if [[ -z "$TARGET_ROW" ]]; then
+  if [[ -z "$TARGET_URL" ]]; then
     echo "No instances found in primary MIG $PRIMARY_MIG."
     exit 1
   fi
 
-  TARGET_VM="${TARGET_ROW%%,*}"
-  TARGET_ZONE="${TARGET_ROW#*,}"
+  TARGET_VM="${TARGET_URL##*/}"
+  TARGET_ZONE="$(sed -n 's#^.*/zones/\([^/]*\)/instances/.*#\1#p' <<<"$TARGET_URL")"
+
+  if [[ -z "$TARGET_VM" || -z "$TARGET_ZONE" ]]; then
+    echo "ERROR: Could not parse VM name/zone from MIG instance URL:" >&2
+    echo "  $TARGET_URL" >&2
+    exit 1
+  fi
 fi
 
 echo "============================================================"
