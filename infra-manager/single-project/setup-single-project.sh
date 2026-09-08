@@ -60,11 +60,19 @@ Execution SA: ${IM_SA_EMAIL}
 Use this Git directory in Infrastructure Manager:
   infra-manager/single-project
 
-Recommended first deployment input:
+Required deployment input:
   project_id=${PROJECT_ID}
 
-Optional features default to false:
+HA/DR defaults:
+  primary_region=us-east4
+  dr_region=us-central1
+  vm_target_size=2
+  enable_dr=true
+  dr_max_replicas=3
+  lb_max_rate_per_instance=5
+  dr_lb_target_utilization=0.6
+
+Optional services remain disabled by default:
   enable_gke=false
-  enable_dr=false
   enable_filestore=false
 EOF
