@@ -8,35 +8,37 @@ PRIMARY_MIG="${PRIMARY_MIG:-medicare-sp-portal-primary}"
 DR_MIG="${DR_MIG:-medicare-sp-portal-dr}"
 INTERVAL="${INTERVAL:-2}"
 
-show_mig() {
-  local title="$1"
-  local mig="$2"
-  local region="$3"
+export PROJECT_ID PRIMARY_REGION DR_REGION PRIMARY_MIG DR_MIG
 
-  echo "$title"
-  gcloud compute instance-groups managed list-instances "$mig" \
-    --region="$region" \
-    --project="$PROJECT_ID" \
-    --format="table(instance.basename():label=INSTANCE,instance.scope(zone):label=ZONE,instanceStatus:label=STATUS,currentAction:label=ACTION,healthState:label=HEALTH)" || true
-}
+cat <<EOF
+============================================================
+ Medicare HA/DR - Live MIG Dashboard
+ Primary: $PRIMARY_MIG ($PRIMARY_REGION)
+ DR:      $DR_MIG ($DR_REGION)
+ Refresh: ${INTERVAL}s
 
-echo "============================================================"
-echo " Medicare HA/DR - Live MIG Watch"
-echo " Primary: $PRIMARY_MIG ($PRIMARY_REGION)"
-echo " DR:      $DR_MIG ($DR_REGION)"
-echo " Refresh: ${INTERVAL}s"
-echo " Ctrl-C to stop"
-echo "============================================================"
+ The screen stays in place and refreshes automatically.
+ Changed STATUS / ACTION / HEALTH fields are highlighted.
+ Press Ctrl-C to stop.
+============================================================
+EOF
 sleep 2
 
-while true; do
-  clear
-  date
-  echo
-  show_mig "PRIMARY MIG - $PRIMARY_REGION" "$PRIMARY_MIG" "$PRIMARY_REGION"
-  echo
-  show_mig "DR MIG - $DR_REGION" "$DR_MIG" "$DR_REGION"
-  echo
-  echo "Watch STATUS / ACTION / HEALTH while another terminal deletes a primary VM."
-  sleep "$INTERVAL"
-done
+watch -n "$INTERVAL" -d bash -c '
+  printf "MEDICARE HA/DR - MANAGED INSTANCE GROUPS\n"
+  printf "Last refresh: %s\n\n" "$(date)"
+
+  printf "================ PRIMARY MIG - %s ================\n" "$PRIMARY_REGION"
+  gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
+    --region="$PRIMARY_REGION" \
+    --project="$PROJECT_ID" \
+    --format="table(instance.basename():label=INSTANCE,instance.scope(zone):label=ZONE,instanceStatus:label=STATUS,currentAction:label=ACTION,healthState:label=HEALTH)" 2>/dev/null || true
+
+  printf "\n================== DR MIG - %s ==================\n" "$DR_REGION"
+  gcloud compute instance-groups managed list-instances "$DR_MIG" \
+    --region="$DR_REGION" \
+    --project="$PROJECT_ID" \
+    --format="table(instance.basename():label=INSTANCE,instance.scope(zone):label=ZONE,instanceStatus:label=STATUS,currentAction:label=ACTION,healthState:label=HEALTH)" 2>/dev/null || true
+
+  printf "\nDelete a primary VM in another terminal and watch ACTION / STATUS / HEALTH change here.\n"
+'
