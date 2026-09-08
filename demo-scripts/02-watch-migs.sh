@@ -12,26 +12,26 @@ INTERVAL="${INTERVAL:-2}"
 PRIMARY_SLOTS="${PRIMARY_SLOTS:-4}"
 DR_SLOTS="${DR_SLOTS:-4}"
 
-# One format string for BOTH headers and data keeps every column aligned.
-ROW_FORMAT='%-28.28s %-13.13s %-10.10s %-13.13s %-10.10s'
+# One format string for both headers and data.
+ROW_FORMAT='%-28.28s %-13.13s %-10.10s %-12.12s %-10.10s'
 
 fetch_mig() {
   local mig="$1"
   local region="$2"
 
-  # Return the full instance URL and parse the zone ourselves. This avoids
-  # gcloud scope() formatting differences between table and CSV output.
+  # JSON is more reliable than CSV for these nested gcloud fields.
+  # Emit tab-separated: full-instance-url, status, action, health.
   gcloud compute instance-groups managed list-instances "$mig" \
     --region="$region" \
     --project="$PROJECT_ID" \
-    --format="csv[no-heading](instance,instanceStatus,currentAction,healthState)" \
-    2>/dev/null || true
+    --format=json 2>/dev/null \
+    | jq -r '.[] | [(.instance // ""), (.instanceStatus // "-"), (.currentAction // "-"), (.healthState // "-")] | @tsv' \
+    || true
 }
 
 write_line() {
   local row="$1"
   shift
-  # Move to a fixed terminal row, erase that row only, then write its new value.
   printf '\033[%s;1H\033[2K%s' "$row" "$*"
 }
 
@@ -48,16 +48,18 @@ format_instance_row() {
   fi
 
   local instance_url status action health instance zone
-  IFS=',' read -r instance_url status action health <<<"$raw"
+  IFS=$'\t' read -r instance_url status action health <<<"$raw"
 
-  instance="${instance_url##*/}"
+  instance="-"
   zone="-"
 
-  # Example URL:
-  # https://www.googleapis.com/compute/v1/projects/.../zones/us-east4-a/instances/medicare-sp-portal-xxxx
+  # Expected URL:
+  # .../zones/us-east4-a/instances/medicare-sp-portal-xxxx
   if [[ "$instance_url" =~ /zones/([^/]+)/instances/([^/]+)$ ]]; then
     zone="${BASH_REMATCH[1]}"
     instance="${BASH_REMATCH[2]}"
+  elif [[ -n "$instance_url" ]]; then
+    instance="${instance_url##*/}"
   fi
 
   printf "$ROW_FORMAT" \
@@ -69,22 +71,19 @@ format_instance_row() {
 }
 
 cleanup() {
-  # Restore the cursor and leave the prompt below the dashboard.
   printf '\033[?25h\033[18;1H\n'
 }
 trap cleanup EXIT INT TERM
 
-# Clear the terminal ONCE. After this, every value is rewritten at a fixed row.
+# Clear once. All later refreshes overwrite the same fixed rows.
 printf '\033[2J\033[H\033[?25l'
 
 while true; do
-  # Fetch first. The existing dashboard remains untouched while gcloud runs.
   mapfile -t primary_rows < <(fetch_mig "$PRIMARY_MIG" "$PRIMARY_REGION")
   mapfile -t dr_rows < <(fetch_mig "$DR_MIG" "$DR_REGION")
 
-  # Only values on these fixed rows are overwritten; nothing scrolls.
   write_line 1 "Updated: $(date '+%Y-%m-%d %H:%M:%S %Z')   Refresh: ${INTERVAL}s   Ctrl-C to stop"
-  write_line 2 "================================================================================"
+  write_line 2 "============================================================================"
   write_line 3 "PRIMARY MIG - ${PRIMARY_REGION} - ${PRIMARY_MIG}"
   write_line 4 "$(format_header)"
 
