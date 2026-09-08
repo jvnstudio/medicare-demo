@@ -24,18 +24,28 @@ locals {
     #!/usr/bin/env bash
     set -euxo pipefail
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
-    cat >/var/www/html/index.html <<'HTML'
+    DEBIAN_FRONTEND=noninteractive apt-get install -y nginx curl
+
+    INSTANCE_NAME="$(curl -fsS -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/name)"
+    ZONE_PATH="$(curl -fsS -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/zone)"
+    ZONE="$(basename "$ZONE_PATH")"
+    REGION="$(echo "$ZONE" | sed -E 's/-[a-z]$//')"
+
+    cat >/var/www/html/index.html <<HTML
     <!doctype html>
     <html>
       <head><title>Medicare Portal Demo</title></head>
       <body style="font-family:Arial;margin:40px">
         <h1>Medicare Portal - VM Workload</h1>
         <p>Managed by Google Cloud Infrastructure Manager.</p>
-        <p>Single-project sandbox deployment with regional self-healing compute.</p>
+        <p>Instance: $INSTANCE_NAME</p>
+        <p>Zone: $ZONE</p>
+        <p>Region: $REGION</p>
+        <p>HA/DR: regional MIG + global health-based load balancing.</p>
       </body>
     </html>
     HTML
+
     echo ok >/var/www/html/health
     systemctl enable --now nginx
   EOT
@@ -123,7 +133,7 @@ resource "google_compute_instance_template" "primary" {
   name_prefix  = "medicare-sp-primary-"
   machine_type = "e2-standard-2"
   tags         = ["medicare-sp-web"]
-  labels       = var.labels
+  labels       = merge(var.labels, { role = "primary" })
 
   disk {
     source_image = "projects/debian-cloud/global/images/family/debian-12"
@@ -223,6 +233,77 @@ resource "google_compute_region_instance_group_manager" "dr" {
     health_check      = google_compute_health_check.portal.id
     initial_delay_sec = 120
   }
+
+  lifecycle {
+    ignore_changes = [target_size]
+  }
+}
+
+resource "google_compute_region_autoscaler" "dr" {
+  count = var.enable_dr ? 1 : 0
+
+  name   = "medicare-sp-dr-autoscaler"
+  region = var.dr_region
+  target = google_compute_region_instance_group_manager.dr[0].self_link
+
+  autoscaling_policy {
+    min_replicas    = 1
+    max_replicas    = var.dr_max_replicas
+    cooldown_period = 60
+
+    load_balancing_utilization {
+      target = var.dr_lb_target_utilization
+    }
+  }
+}
+
+resource "google_compute_global_address" "portal" {
+  name = "medicare-sp-global-ip"
+}
+
+resource "google_compute_backend_service" "portal" {
+  name                  = "medicare-sp-portal-backend"
+  protocol              = "HTTP"
+  port_name             = "http"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  timeout_sec           = 10
+  health_checks         = [google_compute_health_check.portal.id]
+
+  backend {
+    group                 = google_compute_region_instance_group_manager.primary.instance_group
+    balancing_mode        = "RATE"
+    max_rate_per_instance = var.lb_max_rate_per_instance
+    capacity_scaler       = 1.0
+  }
+
+  dynamic "backend" {
+    for_each = var.enable_dr ? [1] : []
+
+    content {
+      group                 = google_compute_region_instance_group_manager.dr[0].instance_group
+      balancing_mode        = "RATE"
+      max_rate_per_instance = var.lb_max_rate_per_instance
+      capacity_scaler       = 1.0
+    }
+  }
+}
+
+resource "google_compute_url_map" "portal" {
+  name            = "medicare-sp-portal-map"
+  default_service = google_compute_backend_service.portal.id
+}
+
+resource "google_compute_target_http_proxy" "portal" {
+  name    = "medicare-sp-http-proxy"
+  url_map = google_compute_url_map.portal.id
+}
+
+resource "google_compute_global_forwarding_rule" "portal" {
+  name                  = "medicare-sp-http-forwarding-rule"
+  ip_address            = google_compute_global_address.portal.address
+  port_range            = "80"
+  target                = google_compute_target_http_proxy.portal.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 
 resource "google_container_cluster" "primary" {
