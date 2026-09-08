@@ -1,0 +1,15 @@
+export FAST_ORG_ID="1058746321647"
+export FAST_ORG_DISPLAY_NAME="johnvnguyentran-org"
+export FAST_ORG_DOMAIN=""
+export FAST_CUSTOMER_ID=""
+
+export FAST_BILLING_ACCOUNT="01DB2C-9B7059-05F15C"
+
+export FAST_ADMIN_PRINCIPAL="user:johnvnguyentran@gmail.com"
+export FAST_ADMIN_EMAIL="johnvnguyentran@gmail.com"
+
+export FAST_BOOTSTRAP_PROJECT="medicare-demo-260907-4f00"
+
+export FAST_PREFIX="medlz"
+export FAST_PRIMARY_REGION="us-east4"
+export FAST_GITHUB_REPO="jvnstudio/medicare-demo"
