@@ -25,17 +25,18 @@ while true; do
     --format="table(instance.basename():label=INSTANCE,instance.scope(zone):label=ZONE,instanceStatus:label=STATUS,currentAction:label=ACTION,healthState:label=HEALTH)" || true
 
   echo
-  echo "AUTOSCALER"
+  echo "DR MIG SIZE"
   gcloud compute instance-groups managed describe "$DR_MIG" \
     --region="$DR_REGION" \
     --project="$PROJECT_ID" \
-    --format="yaml(targetSize,status,autoscaler)" 2>/dev/null || true
+    --format="table(name,targetSize,status.isStable)" || true
 
   echo
-  gcloud compute instance-groups managed list "$DR_MIG" \
-    --regions="$DR_REGION" \
+  echo "AUTOSCALER"
+  gcloud compute autoscalers describe "$DR_AUTOSCALER" \
+    --region="$DR_REGION" \
     --project="$PROJECT_ID" \
-    --format="table(name,targetSize,status.isStable)" 2>/dev/null || true
+    --format="yaml(name,status,recommendedSize,autoscalingPolicy.minNumReplicas,autoscalingPolicy.maxNumReplicas)" 2>/dev/null || true
 
   sleep "$INTERVAL"
 done
