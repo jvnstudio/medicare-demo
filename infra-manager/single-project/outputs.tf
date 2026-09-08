@@ -23,6 +23,26 @@ output "primary_mig" {
   description = "Primary regional managed instance group."
 }
 
+output "dr_mig" {
+  value       = var.enable_dr ? google_compute_region_instance_group_manager.dr[0].name : null
+  description = "Warm DR regional managed instance group."
+}
+
+output "dr_autoscaler" {
+  value       = var.enable_dr ? google_compute_region_autoscaler.dr[0].name : null
+  description = "DR autoscaler that adds VM capacity when load-balancer utilization increases."
+}
+
+output "load_balancer_ip" {
+  value       = google_compute_global_address.portal.address
+  description = "Global external Application Load Balancer IPv4 address."
+}
+
+output "portal_url" {
+  value       = "http://${google_compute_global_address.portal.address}"
+  description = "Demo URL through the global load balancer."
+}
+
 output "object_bucket" {
   value       = google_storage_bucket.portal_objects.name
   description = "Versioned Cloud Storage bucket."
@@ -31,11 +51,6 @@ output "object_bucket" {
 output "gke_cluster_name" {
   value       = var.enable_gke ? google_container_cluster.primary[0].name : null
   description = "Optional regional GKE cluster name."
-}
-
-output "dr_mig" {
-  value       = var.enable_dr ? google_compute_region_instance_group_manager.dr[0].name : null
-  description = "Optional warm DR regional MIG."
 }
 
 output "filestore_ip" {
