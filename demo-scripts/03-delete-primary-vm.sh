@@ -9,27 +9,41 @@ if [[ -n "${VM_NAME:-}" && -n "${VM_ZONE:-}" ]]; then
   TARGET_VM="$VM_NAME"
   TARGET_ZONE="$VM_ZONE"
 else
-  # Ask the MIG for one managed instance self-link. The self-link contains
-  # both the zone and VM name, so we do not depend on gcloud scope() formatting.
-  TARGET_URL="$(gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
+  # Get one managed VM name from the MIG. Do not trust the MIG scope field for
+  # zone parsing because gcloud output formatting can differ by command/version.
+  TARGET_VM="$(gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
     --region="$PRIMARY_REGION" \
     --project="$PROJECT_ID" \
-    --format="value(instance)" \
-    | head -n1)"
+    --format=json \
+    | jq -r '.[0].instance // empty | split("/")[-1]')"
 
-  if [[ -z "$TARGET_URL" ]]; then
-    echo "No instances found in primary MIG $PRIMARY_MIG."
+  if [[ -z "$TARGET_VM" || "$TARGET_VM" == "null" ]]; then
+    echo "ERROR: No instances found in primary MIG $PRIMARY_MIG." >&2
     exit 1
   fi
 
-  TARGET_VM="${TARGET_URL##*/}"
-  TARGET_ZONE="$(sed -n 's#^.*/zones/\([^/]*\)/instances/.*#\1#p' <<<"$TARGET_URL")"
+  # Resolve the zone independently from the actual Compute Engine VM record.
+  TARGET_ZONE="$(gcloud compute instances list \
+    --project="$PROJECT_ID" \
+    --filter="name=$TARGET_VM" \
+    --format=json \
+    | jq -r '.[0].zone // empty | split("/")[-1]')"
 
-  if [[ -z "$TARGET_VM" || -z "$TARGET_ZONE" ]]; then
-    echo "ERROR: Could not parse VM name/zone from MIG instance URL:" >&2
-    echo "  $TARGET_URL" >&2
+  if [[ -z "$TARGET_ZONE" || "$TARGET_ZONE" == "null" ]]; then
+    echo "ERROR: Could not resolve a zone for VM $TARGET_VM." >&2
+    echo "Current matching instances:" >&2
+    gcloud compute instances list \
+      --project="$PROJECT_ID" \
+      --filter="name=$TARGET_VM" \
+      --format="table(name,zone,status)" >&2 || true
     exit 1
   fi
+fi
+
+# Safety check: a real zone should look like us-east4-a, us-central1-b, etc.
+if [[ ! "$TARGET_ZONE" =~ ^[a-z]+-[a-z]+[0-9]+-[a-z]$ ]]; then
+  echo "ERROR: Refusing to delete because '$TARGET_ZONE' does not look like a GCP zone." >&2
+  exit 1
 fi
 
 echo "============================================================"
