@@ -45,10 +45,10 @@ fetch_health_rows() {
     --format=json 2>/dev/null \
   | jq -r '
       .[]?
-      | .healthStatus[]?
+      | .status.healthStatus[]?
       | [
-          (.instance // "" | split("/")[-1]),
-          (.instance // "" | capture("/zones/(?<z>[^/]+)/instances/").z // "-"),
+          ((.instance // "") | split("/")[-1]),
+          ((.instance // "") | capture("/zones/(?<z>[^/]+)/instances/").z // "-"),
           (.healthState // "UNKNOWN"),
           (((.ipAddress // "-")|tostring) + ":" + ((.port // "-")|tostring))
         ]
@@ -57,10 +57,11 @@ fetch_health_rows() {
 }
 
 cleanup() {
-  printf '\033[?25h\033[18;1H\n'
+  printf '\033[?25h\033[20;1H\n'
 }
 trap cleanup EXIT INT TERM
 
+# Clear once. All dashboard rows are rewritten in place after this.
 printf '\033[2J\033[H\033[?25l'
 
 while true; do
@@ -72,6 +73,7 @@ while true; do
   for raw in "${all_rows[@]:-}"; do
     [[ -z "$raw" ]] && continue
     zone="$(awk -F'\t' '{print $2}' <<<"$raw")"
+
     if [[ "$zone" == "$PRIMARY_REGION"-* ]]; then
       primary_rows+=("$raw")
     elif [[ "$zone" == "$DR_REGION"-* ]]; then
@@ -97,6 +99,9 @@ while true; do
   for ((i=0; i<DR_SLOTS; i++)); do
     write_line $((14 + i)) "$(format_row "${dr_rows[$i]:-}")"
   done
+
+  write_line 18 ""
+  write_line 19 "Fail the primary application in another terminal; watch HEALTH change in place."
 
   sleep "$INTERVAL"
 done
