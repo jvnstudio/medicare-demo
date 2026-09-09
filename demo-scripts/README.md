@@ -25,21 +25,22 @@ chmod +x *.sh
 export PROJECT_ID="medicare-demo-260907-4f00"
 ```
 
+For the failover/recovery scripts, SSH is performed through IAP. The VPC therefore needs an ingress firewall rule allowing TCP/22 from the IAP TCP-forwarding range `35.235.240.0/20`.
+
 ## Script order
 
 ```text
 01-show-migs.sh             Baseline inventory
-02-watch-migs.sh            Fixed combined MIG + load-balancer health dashboard
+02-watch-migs.sh            Unified fixed HA/DR operations dashboard
 03-delete-primary-vm.sh     Delete one VM to demonstrate MIG recovery
 04-fail-primary-region.sh   Stop nginx on all primary VMs to demonstrate DR routing
-05-watch-dr-scale.sh        Fixed DR autoscaling dashboard
-06-generate-load.sh         Generate traffic to trigger DR scale-out
-07-recover-primary.sh       Restore nginx on primary VMs
+05-generate-load.sh         Generate traffic to trigger DR scale-out
+06-recover-primary.sh       Restore nginx on primary VMs
 ```
 
-## Demo 1 - VM failure and MIG recovery
+## Unified dashboard
 
-Terminal 1:
+Keep this running for the entire live demo:
 
 ```bash
 ./02-watch-migs.sh
@@ -52,6 +53,18 @@ The fixed dashboard shows both primary and DR instances with:
 - current MIG action
 - MIG health
 - global load-balancer health
+- DR MIG target size and stability
+- DR autoscaler status, recommended size, minimum replicas, and maximum replicas
+
+This replaces the old separate DR autoscaling watcher.
+
+## Demo 1 - VM failure and MIG recovery
+
+Terminal 1:
+
+```bash
+./02-watch-migs.sh
+```
 
 Terminal 2:
 
@@ -77,34 +90,53 @@ In Terminal 2:
 ./04-fail-primary-region.sh
 ```
 
-Type `FAILOVER` when prompted. This stops nginx on all primary-region VMs while leaving the VMs running. Watch the primary `LB HEALTH` values become unhealthy while the DR backend remains healthy.
+Type `FAILOVER` when prompted. This stops nginx on all primary-region VMs through IAP while leaving the VMs running. Watch the primary `LB HEALTH` values become unhealthy while the DR backend remains healthy.
+
+Manual Console equivalent:
+
+```text
+Console
+Compute Engine -> VM instances
+        |
+SSH primary VM #1 -> stop nginx
+SSH primary VM #2 -> stop nginx
+        |
+Load Balancing -> Backend health
+        |
+us-east4 becomes UNHEALTHY
+us-central1 remains HEALTHY
+        |
+Open same global IP
+        |
+Page served from us-central1
+```
 
 ## Demo 3 - DR autoscaling
 
-Terminal 1:
+Keep the same unified dashboard running in Terminal 1:
 
 ```bash
-./05-watch-dr-scale.sh
+./02-watch-migs.sh
 ```
 
-Terminal 2:
+Generate load in Terminal 2:
 
 ```bash
-./06-generate-load.sh
+./05-generate-load.sh
 ```
 
 For stronger load:
 
 ```bash
-WORKERS=50 DURATION=180 ./06-generate-load.sh
+WORKERS=50 DURATION=180 ./05-generate-load.sh
 ```
 
-The DR MIG is configured with a minimum of 1 and maximum of 3 instances. The watcher stays fixed while target size, recommended size, and instance rows change.
+The DR MIG is configured with a minimum of 1 and maximum of 3 instances. Watch the `DR CAPACITY / AUTOSCALER` section in `02-watch-migs.sh` as recommended size, target size, and DR instance rows change.
 
 ## Reset
 
 ```bash
-./07-recover-primary.sh
+./06-recover-primary.sh
 ```
 
 Then keep `02-watch-migs.sh` running until the primary load-balancer health returns to healthy.
@@ -126,6 +158,9 @@ GitHub -> Infrastructure Manager -> Terraform-managed infrastructure
                      |
                      v
         global LB uses healthy DR
+                     |
+                     v
+        generate load against same IP
                      |
                      v
         DR MIG can autoscale 1 -> 3
