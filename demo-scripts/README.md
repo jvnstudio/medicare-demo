@@ -25,11 +25,12 @@ chmod +x *.sh
 export PROJECT_ID="medicare-demo-260907-4f00"
 ```
 
-For the failover/recovery scripts, SSH is performed through IAP. The VPC therefore needs an ingress firewall rule allowing TCP/22 from the IAP TCP-forwarding range `35.235.240.0/20`.
+For the failover/recovery scripts, SSH is performed through IAP. Run `./ensure-iap-ssh.sh` to automatically verify or create the IAP firewall rule (`35.235.240.0/20` -> TCP/22), ensure IAM access, and test the tunnel. Scripts `04` and `06` also call this automatically.
 
 ## Script order
 
 ```text
+ensure-iap-ssh.sh           Verify/configure IAP SSH firewall & IAM (run anytime)
 01-show-migs.sh             Baseline inventory
 02-watch-migs.sh            Unified fixed HA/DR operations dashboard
 03-delete-primary-vm.sh     Delete one VM to demonstrate MIG recovery

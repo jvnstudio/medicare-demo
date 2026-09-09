@@ -210,6 +210,11 @@ fi
 # the application service is stopped. Health checks should therefore show the
 # distinction between VM RUNNING state and application/LB UNHEALTHY state.
 # -----------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "${SCRIPT_DIR}/ensure-iap-ssh.sh" ]]; then
+  "${SCRIPT_DIR}/ensure-iap-ssh.sh" --fast
+fi
+
 for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r VM ZONE STATUS ACTION <<<"$row"
 

@@ -137,6 +137,11 @@ echo "============================================================"
 # For each VM, validate its zone, wait until it is RUNNING, refresh only its
 # cached host-key entry if needed, then start the application service.
 # -----------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "${SCRIPT_DIR}/ensure-iap-ssh.sh" ]]; then
+  "${SCRIPT_DIR}/ensure-iap-ssh.sh" --fast
+fi
+
 for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r VM ZONE <<<"$row"
 
