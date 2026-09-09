@@ -35,11 +35,13 @@ chmod +x *.sh
 export PROJECT_ID="medicare-demo-260907-4f00"
 ```
 
-IAP SSH is used by the failover and recovery scripts. The VPC must allow TCP/22 from the IAP range `35.235.240.0/20`.
+IAP SSH is used by the failover (`04`) and recovery (`06`) scripts. The VPC allows TCP/22 from the IAP range `35.235.240.0/20`. Run `./ensure-iap-ssh.sh` to verify/create the firewall rule and IAM permissions anytime (scripts `04` and `06` also verify this automatically).
 
 ## Workflow
 
 ```text
+ensure-iap-ssh.sh    (optional preflight check)
+      ↓
 01-show-migs.sh
       ↓
 02-watch-migs.sh   ← keep running for the rest of the demo

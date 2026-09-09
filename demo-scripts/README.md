@@ -168,3 +168,46 @@ GitHub -> Infrastructure Manager -> Terraform-managed infrastructure
 ```
 
 For production, cross-region compute recovery must be paired with replicated application state, database/storage replication, secrets, observability, and recurring DR tests to meet the full application RTO/RPO.
+
+---
+
+## Handover & Operational Notes
+
+### Identity-Aware Proxy (IAP) SSH Architecture
+The failover script (`04-fail-primary-region.sh`) and recovery script (`06-recover-primary.sh`) manage the `nginx` application service on Compute Engine VMs via SSH commands. 
+
+To maintain a zero-trust network posture:
+- **No public SSH access:** Ingress TCP port 22 is blocked from the public internet (`0.0.0.0/0`).
+- **Encrypted TCP Tunneling:** SSH traffic is routed through Google Cloud Identity-Aware Proxy (IAP) TCP forwarding (`gcloud compute ssh --tunnel-through-iap`).
+
+### Prerequisites & Troubleshooting (Error 4003)
+If an operator runs script `04` or `06` and sees:
+```text
+ERROR: [0] Error during local connection to [stdin]: Error while connecting [4003: 'failed to connect to backend']. (Failed to connect to port 22)
+```
+
+This error indicates that Cloud IAP could not establish a TCP handshake on port 22 with the backend VM. This is resolved by two requirements:
+
+1. **VPC Ingress Firewall Rule (`medicare-sp-allow-iap-ssh`):**
+   - **Direction:** `INGRESS`
+   - **Protocol/Port:** `tcp:22`
+   - **Source CIDR:** `35.235.240.0/20` (Google Cloud's designated IAP netblock)
+   - **Target:** Applied to `medicare-sp-web` (or all instances in `medicare-sp-vpc`).
+   - *Status:* Now defined permanently in Terraform (`infra-manager/single-project/main.tf`, `infra-manager/main.tf`, and `terraform/main.tf`).
+
+2. **IAM Permissions:**
+   - The operator's active Google account requires the IAM role `roles/iap.tunnelResourceAccessor` on the GCP project.
+
+### Reusable Preflight Helper (`ensure-iap-ssh.sh`)
+To simplify handover and guarantee smooth presentations, run:
+```bash
+./ensure-iap-ssh.sh
+```
+What it does automatically:
+1. Validates and auto-detects the VPC network (`medicare-sp-vpc`).
+2. Checks whether the IAP firewall rule exists; if missing, creates it immediately.
+3. Ensures `roles/iap.tunnelResourceAccessor` is bound to the current `gcloud` user.
+4. Executes a live IAP SSH handshake against an active primary VM to verify the tunnel.
+
+> [!TIP]
+> **Built-in Resilience:** Scripts `04-fail-primary-region.sh` and `06-recover-primary.sh` also invoke `./ensure-iap-ssh.sh --fast` automatically as a preflight check before attempting SSH connections.
