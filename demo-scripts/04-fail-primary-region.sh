@@ -22,12 +22,35 @@ set -euo pipefail
 # This script automates the two SSH + "sudo systemctl stop nginx" steps above.
 # It uses IAP SSH instead of direct public-IP SSH.
 # Prerequisite: allow tcp:22 from IAP range 35.235.240.0/20 to the VPC.
+# MIG recreation can replace a VM's SSH host key. Before connecting, this script
+# removes only the cached Compute Engine host-key entry for that current VM ID.
+# Strict host-key checking remains enabled for the new connection.
 # Keep 02-watch-migs.sh running in another terminal to watch VM/MIG/LB state.
 # -----------------------------------------------------------------------------
 
 PROJECT_ID="${PROJECT_ID:-medicare-demo-260907-4f00}"
 PRIMARY_REGION="${PRIMARY_REGION:-us-east4}"
 PRIMARY_MIG="${PRIMARY_MIG:-medicare-sp-portal-primary}"
+KNOWN_HOSTS_FILE="${HOME}/.ssh/google_compute_known_hosts"
+
+refresh_compute_host_key() {
+  local vm="$1"
+  local zone="$2"
+  local instance_id
+
+  instance_id="$(
+    gcloud compute instances describe "$vm" \
+      --zone="$zone" \
+      --project="$PROJECT_ID" \
+      --format='value(id)' 2>/dev/null || true
+  )"
+
+  if [[ -n "$instance_id" && -f "$KNOWN_HOSTS_FILE" ]] && \
+     ssh-keygen -F "compute.${instance_id}" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1; then
+    echo "Refreshing cached SSH host key for $vm..."
+    ssh-keygen -f "$KNOWN_HOSTS_FILE" -R "compute.${instance_id}" >/dev/null 2>&1 || true
+  fi
+}
 
 mapfile -t VMS < <(
   gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
@@ -91,6 +114,7 @@ for row in "${ROWS[@]}"; do
   ZONE="${row#*|}"
 
   echo
+  refresh_compute_host_key "$VM" "$ZONE"
   echo "Stopping nginx on $VM ($ZONE) through IAP..."
   gcloud compute ssh "$VM" \
     --zone="$ZONE" \
