@@ -80,6 +80,21 @@ resource "google_compute_firewall" "demo_http" {
   }
 }
 
+resource "google_compute_firewall" "demo_iap_ssh" {
+  name    = "medicare-demo-allow-iap-ssh"
+  project = var.project_id
+  network = module.network.self_link
+
+  direction     = "INGRESS"
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["medicare-demo-web"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+}
+
 module "vm_template_primary" {
   source = "git::https://github.com/GoogleCloudPlatform/cloud-foundation-fabric.git//modules/compute-vm?ref=v58.0.0"
 

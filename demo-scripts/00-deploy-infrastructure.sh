@@ -15,7 +15,7 @@ set -euo pipefail
 #
 # Safety:
 #   Nothing is applied unless the preview succeeds and the operator explicitly
-#   types DEPLOY. This script does not create or modify the IAP SSH firewall.
+#   types DEPLOY. The deployment includes the IAP SSH firewall for failover demo scripts.
 # =============================================================================
 
 # -----------------------------------------------------------------------------

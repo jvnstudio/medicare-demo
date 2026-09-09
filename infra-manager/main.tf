@@ -87,6 +87,19 @@ resource "google_compute_firewall" "demo_http" {
   }
 }
 
+resource "google_compute_firewall" "demo_iap_ssh" {
+  name          = "medicare-im-allow-iap-ssh"
+  network       = google_compute_network.medicare.name
+  direction     = "INGRESS"
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["medicare-im-web"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+}
+
 resource "google_compute_health_check" "portal" {
   name                = "medicare-im-portal-health"
   check_interval_sec  = 10
