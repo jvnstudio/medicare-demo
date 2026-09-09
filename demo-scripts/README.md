@@ -13,13 +13,28 @@ The primary MIG demonstrates desired-capacity recovery and zonal HA. The DR MIG 
 
 ## Prepare
 
+Because a Cloud Shell checkout can have local commits, refresh only the demo scripts without merging branches:
+
 ```bash
 cd ~/medicare-demo
-git pull origin main
+git fetch origin main
+git restore --source=origin/main -- demo-scripts
 cd demo-scripts
+chmod +x *.sh
 
 export PROJECT_ID="medicare-demo-260907-4f00"
-chmod +x *.sh
+```
+
+## Script order
+
+```text
+01-show-migs.sh             Baseline inventory
+02-watch-migs.sh            Fixed combined MIG + load-balancer health dashboard
+03-delete-primary-vm.sh     Delete one VM to demonstrate MIG recovery
+04-fail-primary-region.sh   Stop nginx on all primary VMs to demonstrate DR routing
+05-watch-dr-scale.sh        Fixed DR autoscaling dashboard
+06-generate-load.sh         Generate traffic to trigger DR scale-out
+07-recover-primary.sh       Restore nginx on primary VMs
 ```
 
 ## Demo 1 - VM failure and MIG recovery
@@ -30,13 +45,13 @@ Terminal 1:
 ./02-watch-migs.sh
 ```
 
-This is the main visual watcher. It shows both primary and DR managed instances with:
+The fixed dashboard shows both primary and DR instances with:
 
-- instance name
-- zone
+- instance name and zone
 - VM status
 - current MIG action
-- health state
+- MIG health
+- global load-balancer health
 
 Terminal 2:
 
@@ -44,69 +59,55 @@ Terminal 2:
 ./03-delete-primary-vm.sh
 ```
 
-Type `DELETE` when prompted. The script selects one current primary VM automatically, so the demo does not depend on a hard-coded instance name.
+Type `DELETE` when prompted. The script automatically selects one current primary VM and resolves its actual Compute Engine zone.
 
-Equivalent manual command:
-
-```bash
-gcloud compute instances delete INSTANCE_NAME \
-  --zone=INSTANCE_ZONE \
-  --project=medicare-demo-260907-4f00
-```
-
-Watch Terminal 1 as the primary MIG restores its desired capacity. The managed-instance name can be reused, so focus on `STATUS`, `ACTION`, and `HEALTH` during the transition.
+Watch `VM STATUS`, `MIG ACTION`, and `LB HEALTH` in Terminal 1 as the primary MIG restores desired capacity.
 
 ## Demo 2 - regional application failure / DR routing
 
-Terminal 1:
+Keep Terminal 1 running:
 
 ```bash
 ./02-watch-migs.sh
 ```
 
-Terminal 2:
+In Terminal 2:
 
 ```bash
-./04-watch-health.sh
+./04-fail-primary-region.sh
 ```
 
-Terminal 3:
-
-```bash
-./05-fail-primary-region.sh
-```
-
-Type `FAILOVER` when prompted. This stops nginx on all primary-region VMs while leaving the VMs running. The load balancer health check should mark the primary backend unhealthy while the DR MIG remains available.
+Type `FAILOVER` when prompted. This stops nginx on all primary-region VMs while leaving the VMs running. Watch the primary `LB HEALTH` values become unhealthy while the DR backend remains healthy.
 
 ## Demo 3 - DR autoscaling
 
-Watch DR capacity:
+Terminal 1:
 
 ```bash
-./06-watch-dr-scale.sh
+./05-watch-dr-scale.sh
 ```
 
-Generate HTTP load:
+Terminal 2:
 
 ```bash
-./07-generate-load.sh
+./06-generate-load.sh
 ```
 
 For stronger load:
 
 ```bash
-WORKERS=50 DURATION=180 ./07-generate-load.sh
+WORKERS=50 DURATION=180 ./06-generate-load.sh
 ```
 
-The DR MIG is configured with a minimum of 1 and maximum of 3 instances.
+The DR MIG is configured with a minimum of 1 and maximum of 3 instances. The watcher stays fixed while target size, recommended size, and instance rows change.
 
 ## Reset
 
 ```bash
-./08-recover-primary.sh
+./07-recover-primary.sh
 ```
 
-Then allow the load-balancer health check a short time to mark the primary backend healthy again.
+Then keep `02-watch-migs.sh` running until the primary load-balancer health returns to healthy.
 
 ## Recommended presentation order
 
@@ -124,7 +125,7 @@ GitHub -> Infrastructure Manager -> Terraform-managed infrastructure
         fail primary application
                      |
                      v
-          DR backend stays healthy
+        global LB uses healthy DR
                      |
                      v
         DR MIG can autoscale 1 -> 3
