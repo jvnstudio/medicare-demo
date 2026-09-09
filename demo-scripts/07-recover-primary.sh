@@ -22,6 +22,7 @@ echo "============================================================"
 echo " Medicare HA/DR - Recover Primary Application"
 echo " MIG:    $PRIMARY_MIG"
 echo " Region: $PRIMARY_REGION"
+echo " SSH:    IAP tunnel"
 echo "============================================================"
 
 for VM in "${VMS[@]}"; do
@@ -38,10 +39,11 @@ for VM in "${VMS[@]}"; do
     exit 1
   fi
 
-  echo "Starting nginx on $VM ($ZONE)..."
+  echo "Starting nginx on $VM ($ZONE) through IAP..."
   gcloud compute ssh "$VM" \
     --zone="$ZONE" \
     --project="$PROJECT_ID" \
+    --tunnel-through-iap \
     --command="sudo systemctl start nginx"
 done
 
