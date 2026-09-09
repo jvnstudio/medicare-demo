@@ -6,10 +6,12 @@ PRIMARY_REGION="${PRIMARY_REGION:-us-east4}"
 DR_REGION="${DR_REGION:-us-central1}"
 PRIMARY_MIG="${PRIMARY_MIG:-medicare-sp-portal-primary}"
 DR_MIG="${DR_MIG:-medicare-sp-portal-dr}"
+DR_AUTOSCALER="${DR_AUTOSCALER:-medicare-sp-dr-autoscaler}"
 BACKEND_SERVICE="${BACKEND_SERVICE:-medicare-sp-portal-backend}"
 INTERVAL="${INTERVAL:-2}"
 
-# Fixed slots keep the dashboard from shifting while VMs are deleted/recreated.
+# Fixed slots keep the dashboard from shifting while VMs are deleted/recreated
+# or while the DR MIG scales out.
 PRIMARY_SLOTS="${PRIMARY_SLOTS:-4}"
 DR_SLOTS="${DR_SLOTS:-4}"
 
@@ -63,6 +65,29 @@ fetch_lb_rows() {
     ' 2>/dev/null || true
 }
 
+fetch_dr_mig_meta() {
+  gcloud compute instance-groups managed describe "$DR_MIG" \
+    --region="$DR_REGION" \
+    --project="$PROJECT_ID" \
+    --format=json 2>/dev/null \
+  | jq -r '[((.targetSize // "-")|tostring), ((.status.isStable // false)|tostring)] | @tsv' \
+  2>/dev/null || true
+}
+
+fetch_dr_autoscaler_meta() {
+  gcloud compute autoscalers describe "$DR_AUTOSCALER" \
+    --region="$DR_REGION" \
+    --project="$PROJECT_ID" \
+    --format=json 2>/dev/null \
+  | jq -r '[
+      (.status // "-"),
+      ((.recommendedSize // "-")|tostring),
+      ((.autoscalingPolicy.minNumReplicas // "-")|tostring),
+      ((.autoscalingPolicy.maxNumReplicas // "-")|tostring)
+    ] | @tsv' \
+  2>/dev/null || true
+}
+
 format_instance_row() {
   local raw="$1"
 
@@ -89,7 +114,7 @@ format_instance_row() {
 }
 
 cleanup() {
-  printf '\033[?25h\033[21;1H\n'
+  printf '\033[?25h\033[25;1H\n'
 }
 trap cleanup EXIT INT TERM
 
@@ -103,6 +128,8 @@ while true; do
   mapfile -t primary_rows < <(fetch_mig_rows "$PRIMARY_MIG" "$PRIMARY_REGION")
   mapfile -t dr_rows < <(fetch_mig_rows "$DR_MIG" "$DR_REGION")
   mapfile -t current_lb_rows < <(fetch_lb_rows)
+  dr_mig_meta="$(fetch_dr_mig_meta)"
+  dr_autoscaler_meta="$(fetch_dr_autoscaler_meta)"
 
   lb_health=()
   for raw in "${current_lb_rows[@]:-}"; do
@@ -110,6 +137,9 @@ while true; do
     IFS=$'\t' read -r instance health <<<"$raw"
     [[ -n "$instance" ]] && lb_health["$instance"]="${health:-UNKNOWN}"
   done
+
+  IFS=$'\t' read -r dr_target_size dr_stable <<<"${dr_mig_meta:-$'-\t-'}"
+  IFS=$'\t' read -r autoscaler_status recommended min_replicas max_replicas <<<"${dr_autoscaler_meta:-$'-\t-\t-\t-'}"
 
   write_line 1 "Updated: $(date '+%Y-%m-%d %H:%M:%S %Z')   Refresh: ${INTERVAL}s   Ctrl-C to stop"
   write_line 2 "================================================================================================"
@@ -131,8 +161,11 @@ while true; do
   done
 
   write_line 18 ""
-  write_line 19 "VM delete demo: watch VM STATUS / MIG ACTION.  Regional failover: watch LB HEALTH."
-  write_line 20 "Use 03-delete-primary-vm.sh for HA or 05-fail-primary-region.sh for DR."
+  write_line 19 "DR CAPACITY / AUTOSCALER"
+  write_line 20 "MIG target size: ${dr_target_size:--}    Stable: ${dr_stable:--}"
+  write_line 21 "Autoscaler: ${DR_AUTOSCALER}    Status: ${autoscaler_status:--}"
+  write_line 22 "Recommended: ${recommended:--}    Min: ${min_replicas:--}    Max: ${max_replicas:--}"
+  write_line 23 "HA: 03-delete-primary-vm.sh   DR: 04-fail-primary-region.sh   Load: 05-generate-load.sh"
 
   sleep "$INTERVAL"
 done
