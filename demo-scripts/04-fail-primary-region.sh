@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
+# MANUAL GCP CONSOLE EQUIVALENT
+#
+# Console
+# Compute Engine → VM instances
+#         ↓
+# SSH primary VM #1 → stop nginx
+# SSH primary VM #2 → stop nginx
+#         ↓
+# Load Balancing → Backend health
+#         ↓
+# us-east4 becomes UNHEALTHY
+# us-central1 remains HEALTHY
+#         ↓
+# Open same global IP
+#         ↓
+# Page served from us-central1
+#
+# This script automates the two SSH + "sudo systemctl stop nginx" steps above.
+# Keep 02-watch-migs.sh running in another terminal to watch VM/MIG/LB state.
+# -----------------------------------------------------------------------------
+
 PROJECT_ID="${PROJECT_ID:-medicare-demo-260907-4f00}"
 PRIMARY_REGION="${PRIMARY_REGION:-us-east4}"
 PRIMARY_MIG="${PRIMARY_MIG:-medicare-sp-portal-primary}"
