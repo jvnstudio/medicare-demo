@@ -20,6 +20,8 @@ set -euo pipefail
 # Page served from us-central1
 #
 # This script automates the two SSH + "sudo systemctl stop nginx" steps above.
+# It uses IAP SSH instead of direct public-IP SSH.
+# Prerequisite: allow tcp:22 from IAP range 35.235.240.0/20 to the VPC.
 # Keep 02-watch-migs.sh running in another terminal to watch VM/MIG/LB state.
 # -----------------------------------------------------------------------------
 
@@ -62,6 +64,7 @@ echo "============================================================"
 echo " Medicare DR Demo - Fail Primary Application"
 echo " MIG:    $PRIMARY_MIG"
 echo " Region: $PRIMARY_REGION"
+echo " SSH:    IAP tunnel"
 echo "============================================================"
 echo
 echo "This stops nginx on ALL primary VMs while leaving the VMs running."
@@ -88,10 +91,11 @@ for row in "${ROWS[@]}"; do
   ZONE="${row#*|}"
 
   echo
-  echo "Stopping nginx on $VM ($ZONE)..."
+  echo "Stopping nginx on $VM ($ZONE) through IAP..."
   gcloud compute ssh "$VM" \
     --zone="$ZONE" \
     --project="$PROJECT_ID" \
+    --tunnel-through-iap \
     --command="sudo systemctl stop nginx"
 done
 
