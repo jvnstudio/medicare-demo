@@ -32,7 +32,8 @@ The legacy environment has on-premises virtualization at capacity. Applications 
 │   ├── 03-delete-primary-vm.sh
 │   ├── 04-fail-primary-region.sh
 │   ├── 05-generate-load.sh
-│   └── 06-recover-primary.sh
+│   ├── 06-recover-primary.sh
+│   └── 07-destroy-medicare.sh
 ├── infra-manager/          # Google Cloud Infrastructure Manager Terraform
 ├── terraform/
 ├── kubernetes/
@@ -124,6 +125,7 @@ export PROJECT_ID="medicare-demo-260907-4f00"   # or your active project ID
 ./04-fail-primary-region.sh   # Stop nginx on primary VMs -> observe DR routing
 ./05-generate-load.sh         # Apply HTTP traffic -> observe DR autoscaling
 ./06-recover-primary.sh       # Restart nginx -> primary returns to HEALTHY
+./07-destroy-medicare.sh      # Clean teardown of Infra Manager deployment
 ```
 
 ### Handover & operational notes

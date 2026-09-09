@@ -37,6 +37,7 @@ ensure-iap-ssh.sh           Verify/configure IAP SSH firewall & IAM (run anytime
 04-fail-primary-region.sh   Stop nginx on all primary VMs to demonstrate DR routing
 05-generate-load.sh         Generate traffic to trigger DR scale-out
 06-recover-primary.sh       Restore nginx on primary VMs
+07-destroy-medicare.sh      Tear down Infrastructure Manager deployment & resources
 ```
 
 ## Unified dashboard
@@ -141,6 +142,24 @@ The DR MIG is configured with a minimum of 1 and maximum of 3 instances. Watch t
 ```
 
 Then keep `02-watch-migs.sh` running until the primary load-balancer health returns to healthy.
+
+## Clean up / Destroy
+
+When finished with the demo, tear down the Infrastructure Manager deployment:
+
+```bash
+./07-destroy-medicare.sh
+```
+
+Type `DELETE` when prompted. 
+
+**What this deletes:**
+- The Infrastructure Manager deployment.
+- All deployed resources managed by Terraform (Compute Engine VMs, MIGs, global external load balancer, health checks, VPC network, subnets).
+- Deployment metadata in Google Cloud.
+
+**What this preserves:**
+- The GCP project itself (`medicare-demo-260907-4f00`), billing links, IAM permissions, and enabled Google APIs remain untouched so you can redeploy quickly using `00-deploy-infrastructure.sh`.
 
 ## Recommended presentation order
 

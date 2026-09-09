@@ -53,6 +53,8 @@ ensure-iap-ssh.sh    (optional preflight check)
 05-generate-load.sh
       ↓
 06-recover-primary.sh
+      ↓
+07-destroy-medicare.sh   (clean teardown when finished)
 ```
 
 ## 01 - Show baseline
@@ -276,6 +278,29 @@ UNHEALTHY → HEALTHY
 **What it proves**
 
 The primary application can be restored while the same global endpoint remains in service.
+
+---
+
+## 07 - Tear down the demo environment
+
+When the presentation is concluded, tear down the deployed resources cleanly:
+
+```bash
+./07-destroy-medicare.sh
+```
+
+Type:
+
+```text
+DELETE
+```
+
+**What it does**
+
+- Calls `gcloud infra-manager deployments delete`.
+- Deletes the Terraform-managed compute instances, MIGs, global load balancer, health checks, and VPC subnets.
+- Deletes the Infrastructure Manager deployment metadata.
+- Preserves the GCP project, IAM bindings, and billing account for fast re-execution later.
 
 ---
 
