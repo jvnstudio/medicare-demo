@@ -4,6 +4,29 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-medicare-demo-260907-4f00}"
 PRIMARY_REGION="${PRIMARY_REGION:-us-east4}"
 PRIMARY_MIG="${PRIMARY_MIG:-medicare-sp-portal-primary}"
+KNOWN_HOSTS_FILE="${HOME}/.ssh/google_compute_known_hosts"
+
+# MIG recreation can replace a VM's SSH host key. Remove only the cached
+# Compute Engine host-key entry for the current VM ID before reconnecting.
+# Strict host-key checking remains enabled for the new IAP SSH connection.
+refresh_compute_host_key() {
+  local vm="$1"
+  local zone="$2"
+  local instance_id
+
+  instance_id="$(
+    gcloud compute instances describe "$vm" \
+      --zone="$zone" \
+      --project="$PROJECT_ID" \
+      --format='value(id)' 2>/dev/null || true
+  )"
+
+  if [[ -n "$instance_id" && -f "$KNOWN_HOSTS_FILE" ]] && \
+     ssh-keygen -F "compute.${instance_id}" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1; then
+    echo "Refreshing cached SSH host key for $vm..."
+    ssh-keygen -f "$KNOWN_HOSTS_FILE" -R "compute.${instance_id}" >/dev/null 2>&1 || true
+  fi
+}
 
 mapfile -t VMS < <(
   gcloud compute instance-groups managed list-instances "$PRIMARY_MIG" \
@@ -39,6 +62,7 @@ for VM in "${VMS[@]}"; do
     exit 1
   fi
 
+  refresh_compute_host_key "$VM" "$ZONE"
   echo "Starting nginx on $VM ($ZONE) through IAP..."
   gcloud compute ssh "$VM" \
     --zone="$ZONE" \
